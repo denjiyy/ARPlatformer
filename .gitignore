@@ -1,0 +1,23 @@
+# Unity
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+Logs/
+UserSettings/
+
+# Auto-generated files
+*.csproj
+*.unityproj
+*.sln
+*.user
+*.userprefs
+*.pidb
+*.booproj
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store*.tgz
