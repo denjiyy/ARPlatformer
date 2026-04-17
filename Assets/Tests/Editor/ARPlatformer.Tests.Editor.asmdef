@@ -1,0 +1,21 @@
+{
+    "name": "ARPlatformer.Tests.Editor",
+    "rootNamespace": "ARPlatformer.Tests",
+    "references": [
+        "ARPlatformer.Runtime"
+    ],
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

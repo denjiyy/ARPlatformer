@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c48e3ee0b9f7424493f837db8ff45eaa, type: 3}
+  m_Name: ARPlatformerRuntimeConfig
+  m_EditorClassIdentifier: 
+  markerWidthMeters: 0.12
+  markerCheckpointRefreshDistance: 0.01
+  markerCheckpointRefreshForwardDotThreshold: 0.9995
+  characterMoveSpeed: 1.6
+  characterJumpHeight: 0.45
+  characterGravity: -14
+  respawnRayHeight: 1.6
+  respawnRayDistance: 5
+  surfaceHoverHeight: 0.14
+  surfaceSampleSpacing: 0.45
+  minSurfaceSpacing: 0.4
+  minGoalDistance: 1.2
+  surfaceGridHalfExtent: 4
+  coinCountTarget: 7
+  coursePropTarget: 4
+  minCoinGoalDistance: 0.55
+  minCoursePropSpawnDistance: 0.9
+  minCoursePropGoalDistance: 0.85
+  minCoursePropCoinDistance: 0.52
+  coinCollectDistance: 0.48
+  goalReachDistance: 0.72
+  goalReachHeightTolerance: 1.5
+  scanCollisionSyncInterval: 0.35
+  vuforiaStartupTimeoutSeconds: 15
+  uiRefreshInterval: 0.1

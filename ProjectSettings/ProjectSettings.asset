@@ -167,8 +167,8 @@ PlayerSettings:
   androidMaxAspectRatio: 2.4
   androidMinAspectRatio: 1
   applicationIdentifier:
-    Android: com.UnityTechnologies.com.unity.template.urpblank
-    Standalone: com.Unity-Technologies.com.unity.template.urp-blank
+    Android: com.denistabutov.arplatformer
+    Standalone: com.denistabutov.arplatformer
     iPhone: com.denistabutov.arplatformer
   buildNumber:
     Standalone: 0

@@ -26,13 +26,18 @@ namespace ARPlatformer.Editor
 
         private static void BuildIos(bool throwOnFailure)
         {
+            ARPlatformerSceneSetup.ApplySetupBatchMode();
+
             var scenes = EditorBuildSettings.scenes
                 .Where(scene => scene.enabled)
                 .Select(scene => scene.path)
                 .ToArray();
 
             if (scenes.Length == 0)
+            {
                 Fail("No enabled scenes were found in Build Settings.", throwOnFailure);
+                return;
+            }
 
             var buildPath = ResolveBuildPath();
             Directory.CreateDirectory(buildPath);
@@ -46,7 +51,10 @@ namespace ARPlatformer.Editor
             }
 
             if (!EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.iOS, BuildTarget.iOS))
+            {
                 Fail("Unity could not switch the active build target to iOS.", throwOnFailure);
+                return;
+            }
 
             ApplyVuforiaIosDefaults();
 

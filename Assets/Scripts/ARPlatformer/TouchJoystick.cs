@@ -3,6 +3,8 @@ using UnityEngine.EventSystems;
 
 namespace ARPlatformer
 {
+    [DisallowMultipleComponent]
+    [RequireComponent(typeof(RectTransform))]
     public sealed class TouchJoystick : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler
     {
         [SerializeField] private RectTransform handle;
@@ -28,6 +30,11 @@ namespace ARPlatformer
         }
 
         public void OnPointerUp(PointerEventData eventData)
+        {
+            ResetHandle();
+        }
+
+        private void OnDisable()
         {
             ResetHandle();
         }
