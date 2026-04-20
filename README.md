@@ -151,6 +151,63 @@ UI компонент за мобилно управление:
 
 ---
 
+## Технологичен стек и зависимости
+
+- **Unity** (проектът е структуриран за мобилен AR runtime)
+- **Vuforia Engine** (Area Target Capture + runtime Image Target)
+- **Unity Input System** (touch joystick + UI input)
+- **URP/Standard shader fallback логика** за визуализация на scan mesh
+
+> Забележка: при промяна на Unity/Vuforia версии първо валидирайте scan pipeline-а и runtime mesh collider поведението на реално устройство.
+
+---
+
+## Сценични зависимости (важно)
+
+За да работи gameplay слоят предвидимо, сцената трябва да съдържа:
+
+- `AreaTargetCaptureBehaviour` (за scan phase)
+- runtime обект с `ARPlatformerRuntime`
+- (по избор) шаблонен root **AR Platformer Templates** със следните деца:
+  - `Coin Template`
+  - `Goal Flag Template`
+  - `Course Block Template`
+  - `Tall Course Block Template`
+  - `Checkpoint Template`
+
+Ако template-ите липсват, системата преминава към fallback primitives и логва предупреждения в Console.
+
+---
+
+## Runtime конфигурация (ARPlatformerRuntimeConfig)
+
+Най-важните параметри за стабилност и качество на gameplay:
+
+- **Spawn / Surface**
+  - `respawnRayHeight`, `respawnRayDistance`
+  - `surfaceHoverHeight`
+  - `environmentRaycastMask`
+- **Physics layers**
+  - `playerPhysicsLayer`
+  - `spatialMeshPhysicsLayer`
+- **Spawn readiness**
+  - `markerSpawnDelaySeconds`
+  - `markerSpawnStableChecks`
+  - `markerSpawnReadinessTimeoutSeconds`
+- **Layout**
+  - `surfaceSampleSpacing`, `minSurfaceSpacing`
+  - `coinCountTarget`, `coursePropTarget`
+  - `minGoalDistance`, `minCoinGoalDistance`
+- **Character movement**
+  - `characterMoveSpeed`, `characterJumpHeight`, `characterGravity`
+
+### Критична бележка за Physics Matrix
+
+`playerPhysicsLayer` и `spatialMeshPhysicsLayer` трябва да имат активна колизия в **Project Settings > Physics**.  
+Runtime-ът вече има auto-correct защита, но правилната матрица в проекта остава препоръчителната конфигурация.
+
+---
+
 ## Начин на използване
 
 1. Отворете проекта в Unity.
@@ -160,6 +217,59 @@ UI компонент за мобилно управление:
 5. Изчакайте играта да премине в режим на gameplay.
 6. Управлявайте героя чрез joystick-а.
 7. Съберете всички монети и достигнете флага, за да завършите нивото.
+
+---
+
+## QA чеклист (бърза валидация)
+
+Използвайте този минимум след промени по runtime, physics или layout генерацията:
+
+1. **Scan quality check**  
+   Сканирайте пода + горните повърхности на мебелите; натиснете `Finish Scan`.
+2. **Spawn stability**  
+   Играчът трябва да се появи стабилно върху валидна повърхност без мигновен respawn loop.
+3. **Collision check**  
+   При движение персонажът не трябва да пропада през scan mesh.
+4. **Layout generation**  
+   Трябва да има goal flag и coins (или fallback варианти при непълни templates/scan).
+5. **Gameplay completion**  
+   Събиране на всички монети + достигане на флага трябва да завърши нивото.
+6. **Recovery actions**  
+   `Respawn` и `Reset Session` трябва да работят без блокиране на състоянията.
+
+---
+
+## Troubleshooting
+
+### 1) Играчът пада през пода
+
+Проверете последователно:
+
+- дали `playerPhysicsLayer` и `spatialMeshPhysicsLayer` collide-ват в Physics Matrix;
+- дали runtime mesh collider-ите съществуват и са на правилния layer;
+- дали scan-ът покрива достатъчно добре walkable зони;
+- дали `fallRespawnDistance` (в `PlatformerCharacterController`) не е твърде нисък в Inspector.
+
+### 2) Не се появяват монети/флаг
+
+- проверете Console за warnings от `ARPlatformerContentFactory` (липсващи templates);
+- проверете `environmentRaycastMask` и слоевете на scan mesh;
+- в sparse scan условия fallback позициите трябва да се генерират; ако не, проверете scan coverage и raycast distance параметрите.
+
+### 3) Marker е открит, но spawn не започва
+
+- валидирайте camera permissions;
+- проверете дали Image Target текстурата се зарежда от `StreamingAssets/Markers/platformer-marker.png`;
+- проверете readiness timeout логове и дали scan mesh има валидна геометрия.
+
+---
+
+## Производителност и устойчивост
+
+- Collider sync е throttled през `scanCollisionSyncInterval`.
+- Runtime използва fallback визуални обекти при липсващи templates.
+- UI refresh е интервално управление (`uiRefreshInterval`) за по-стабилен мобилен runtime.
+- При разширяване на проекта с повече сцени, имайте предвид че `Physics.IgnoreLayerCollision` променя глобално physics състоянието в рамките на сесията.
 
 ---
 
