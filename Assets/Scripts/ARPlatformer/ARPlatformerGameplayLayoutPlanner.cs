@@ -43,6 +43,7 @@ namespace ARPlatformer
             float respawnRayHeight,
             float respawnRayDistance,
             float surfaceHoverHeight,
+            int environmentLayerMask,
             float surfaceSampleSpacing,
             float minSurfaceSpacing,
             int surfaceGridHalfExtent)
@@ -62,7 +63,7 @@ namespace ARPlatformer
                     var forwardOffset = z * surfaceSampleSpacing;
                     var probeOrigin = spawnPosition + right * lateralOffset + spawnForward * forwardOffset + Vector3.up * respawnRayHeight;
 
-                    if (!Physics.Raycast(probeOrigin, Vector3.down, out var hit, respawnRayDistance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                    if (!Physics.Raycast(probeOrigin, Vector3.down, out var hit, respawnRayDistance, environmentLayerMask, QueryTriggerInteraction.Ignore))
                         continue;
 
                     if (hit.normal.y < 0.72f)

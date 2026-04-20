@@ -9,32 +9,40 @@ namespace ARPlatformer
         public const float Height = 1.8f;
         public const float Radius = 0.24f;
         public const float SlopeLimit = 55f;
-        public const float StepOffset = 0.2f;
-        public const float SkinWidth = 0.02f;
+        public const float StepOffset = 0.1f;
+        public const float SkinWidth = 0.08f;
         public const float MinMoveDistance = 0f;
 
         public static bool Apply(CharacterController characterController)
+        {
+            return ApplyScaled(characterController, 1f);
+        }
+
+        public static bool ApplyScaled(CharacterController characterController, float scale)
         {
             if (characterController == null)
                 return false;
 
             var changed = false;
 
-            if (characterController.center != Center)
+            var scaledCenter = Center * scale;
+            if (characterController.center != scaledCenter)
             {
-                characterController.center = Center;
+                characterController.center = scaledCenter;
                 changed = true;
             }
 
-            if (!Mathf.Approximately(characterController.height, Height))
+            var scaledHeight = Height * scale;
+            if (!Mathf.Approximately(characterController.height, scaledHeight))
             {
-                characterController.height = Height;
+                characterController.height = scaledHeight;
                 changed = true;
             }
 
-            if (!Mathf.Approximately(characterController.radius, Radius))
+            var scaledRadius = Radius * scale;
+            if (!Mathf.Approximately(characterController.radius, scaledRadius))
             {
-                characterController.radius = Radius;
+                characterController.radius = scaledRadius;
                 changed = true;
             }
 
@@ -44,15 +52,17 @@ namespace ARPlatformer
                 changed = true;
             }
 
-            if (!Mathf.Approximately(characterController.stepOffset, StepOffset))
+            var scaledStepOffset = StepOffset * scale;
+            if (!Mathf.Approximately(characterController.stepOffset, scaledStepOffset))
             {
-                characterController.stepOffset = StepOffset;
+                characterController.stepOffset = scaledStepOffset;
                 changed = true;
             }
 
-            if (!Mathf.Approximately(characterController.skinWidth, SkinWidth))
+            var scaledSkinWidth = SkinWidth * scale;
+            if (!Mathf.Approximately(characterController.skinWidth, scaledSkinWidth))
             {
-                characterController.skinWidth = SkinWidth;
+                characterController.skinWidth = scaledSkinWidth;
                 changed = true;
             }
 

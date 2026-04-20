@@ -33,6 +33,20 @@ namespace ARPlatformer
             _courseBlockTemplate = FindTemplate(_templateRoot, CourseBlockTemplateName);
             _tallCourseBlockTemplate = FindTemplate(_templateRoot, TallCourseBlockTemplateName);
             _checkpointTemplate = FindTemplate(_templateRoot, CheckpointTemplateName);
+
+            // Validate that critical templates were found and provide detailed diagnostics
+            if (_templateRoot == null)
+                UnityEngine.Debug.LogWarning("AR Platformer: Template root 'AR Platformer Templates' not found in scene. " +
+                    "Fallback: Creating generic cube blocks for coins, flags, and checkpoints.");
+            if (_goalTemplate == null)
+                UnityEngine.Debug.LogWarning("AR Platformer: Goal Flag template 'Goal Flag Template' not found. " +
+                    "Fallback: Creating procedural cylinder pole + cube flag at runtime.");
+            if (_coinTemplate == null)
+                UnityEngine.Debug.LogWarning("AR Platformer: Coin template 'Coin Template' not found. " +
+                    "Fallback: Creating procedural sphere coin (flattened, 0.14 scale) at runtime.");
+            if (_courseBlockTemplate == null)
+                UnityEngine.Debug.LogWarning("AR Platformer: Course Block template 'Course Block Template' not found. " +
+                    "Fallback: Creating procedural cube platforms at runtime.");
         }
 
         public GameObject InstantiatePlayer(GameObject defaultPlayerPrefab, string name)
@@ -52,7 +66,7 @@ namespace ARPlatformer
                 return;
 
             AttachToRuntimeRoot(player.transform);
-            PlatformerCharacterControllerDefaults.Apply(characterController);
+            StripPhysicsFromPlayerHierarchy(player, characterController);
         }
 
         public void ConfigurePlayerVisuals(GameObject player)
@@ -265,6 +279,31 @@ namespace ARPlatformer
             var transforms = root.GetComponentsInChildren<Transform>(true);
             for (var i = 0; i < transforms.Length; i++)
                 transforms[i].gameObject.layer = ignoreLayer;
+        }
+
+        private static void StripPhysicsFromPlayerHierarchy(GameObject player, CharacterController characterController)
+        {
+            if (player == null)
+                return;
+
+            var colliders = player.GetComponentsInChildren<Collider>(true);
+            for (var i = 0; i < colliders.Length; i++)
+            {
+                var collider = colliders[i];
+                if (collider == null || collider == characterController)
+                    continue;
+
+                UnityEngine.Object.Destroy(collider);
+            }
+
+            var rigidbodies = player.GetComponentsInChildren<Rigidbody>(true);
+            for (var i = 0; i < rigidbodies.Length; i++)
+            {
+                if (rigidbodies[i] == null)
+                    continue;
+
+                UnityEngine.Object.Destroy(rigidbodies[i]);
+            }
         }
     }
 }

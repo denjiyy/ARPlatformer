@@ -19,6 +19,12 @@ namespace ARPlatformer
         [SerializeField, Min(0.01f)] private float respawnRayHeight = 1.6f;
         [SerializeField, Min(0.01f)] private float respawnRayDistance = 5f;
         [SerializeField, Min(0f)] private float surfaceHoverHeight = 0.14f;
+        [SerializeField] private LayerMask environmentRaycastMask = ~0;
+        [SerializeField, Range(0, 31)] private int playerPhysicsLayer = 0;
+        [SerializeField, Range(0, 31)] private int spatialMeshPhysicsLayer = 0;
+        [SerializeField, Min(0f)] private float markerSpawnDelaySeconds = 0.12f;
+        [SerializeField, Range(1, 6)] private int markerSpawnStableChecks = 2;
+        [SerializeField, Min(0.1f)] private float markerSpawnReadinessTimeoutSeconds = 2.5f;
 
         [Header("Layout")]
         [SerializeField, Min(0.01f)] private float surfaceSampleSpacing = 0.45f;
@@ -52,6 +58,26 @@ namespace ARPlatformer
         public float RespawnRayHeight => respawnRayHeight;
         public float RespawnRayDistance => respawnRayDistance;
         public float SurfaceHoverHeight => surfaceHoverHeight;
+        public int EnvironmentRaycastMask
+        {
+            get
+            {
+                var configuredMask = environmentRaycastMask.value;
+                if (configuredMask != 0)
+                    return configuredMask;
+
+                var spatialLayerMask = 1 << SpatialMeshPhysicsLayer;
+                var fallbackMask = Physics.DefaultRaycastLayers | spatialLayerMask;
+                return fallbackMask != 0 ? fallbackMask : ~0;
+            }
+        }
+
+        public int PlayerPhysicsLayer => Mathf.Clamp(playerPhysicsLayer, 0, 31);
+        public int SpatialMeshPhysicsLayer => Mathf.Clamp(spatialMeshPhysicsLayer, 0, 31);
+        public float MarkerSpawnDelaySeconds => Mathf.Max(0f, markerSpawnDelaySeconds);
+        public int MarkerSpawnStableChecks => Mathf.Max(1, markerSpawnStableChecks);
+        public float MarkerSpawnReadinessTimeoutSeconds =>
+            markerSpawnReadinessTimeoutSeconds >= 0.1f ? markerSpawnReadinessTimeoutSeconds : 2.5f;
         public float SurfaceSampleSpacing => surfaceSampleSpacing;
         public float MinSurfaceSpacing => minSurfaceSpacing;
         public float MinGoalDistance => minGoalDistance;

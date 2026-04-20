@@ -6,6 +6,9 @@ namespace ARPlatformer
 {
     public sealed class ARPlatformerGameplaySession : IDisposable
     {
+        private const float PlayerScale = 0.5f;
+        private const float SpawnGroundOffset = 0.08f;
+
         private sealed class CoinInstance
         {
             public GameObject Root;
@@ -118,6 +121,14 @@ namespace ARPlatformer
                 CreateOrUpdateCheckpointMarker();
         }
 
+        public bool HasSpawnSurface(Transform markerTransform)
+        {
+            if (markerTransform == null)
+                return false;
+
+            return TryRaycastSpawnSurface(markerTransform.position, out _);
+        }
+
         public void SpawnPlayer(Transform markerTransform, Camera gameplayCamera)
         {
             if (markerTransform == null)
@@ -134,11 +145,14 @@ namespace ARPlatformer
                 _playerCheckpointPosition,
                 Quaternion.LookRotation(_playerCheckpointForward, Vector3.up));
 
+            player.transform.localScale = Vector3.one;
+            ApplyLayerRecursively(player, _config.PlayerPhysicsLayer);
+
             var characterController = player.GetComponent<CharacterController>();
             if (characterController == null)
                 characterController = player.AddComponent<CharacterController>();
 
-            PlatformerCharacterControllerDefaults.Apply(characterController);
+            PlatformerCharacterControllerDefaults.ApplyScaled(characterController, PlayerScale);
 
             _playerController = player.GetComponent<PlatformerCharacterController>();
             if (_playerController == null)
@@ -153,6 +167,7 @@ namespace ARPlatformer
                 _config.CharacterGravity);
             _playerController.SetCheckpoint(_playerCheckpointPosition, _playerCheckpointForward);
             _playerController.SetMovementEnabled(true);
+            EnsurePlayerEnvironmentLayerCollision();
 
             if (_respawnRequestedHandler != null)
                 _playerController.RespawnRequested += _respawnRequestedHandler;
@@ -287,9 +302,21 @@ namespace ARPlatformer
                 _config.RespawnRayHeight,
                 _config.RespawnRayDistance,
                 _config.SurfaceHoverHeight,
+                _config.EnvironmentRaycastMask,
                 _config.SurfaceSampleSpacing,
                 _config.MinSurfaceSpacing,
                 _config.SurfaceGridHalfExtent);
+            
+            // If surface sampling failed (likely mesh colliders not ready), create fallback surfaces
+            // Must create at least 2 surfaces so coins can exist separately from goal
+            if (sampledSurfaces == null || sampledSurfaces.Count == 0)
+            {
+                UnityEngine.Debug.LogWarning("AR Platformer: No walkable surfaces detected. Mesh colliders may not be initialized or environment has no valid surfaces. " +
+                    "Creating fallback platform positions. Verify room scan is complete and surfaces have proper collision geometry.");
+                // Create fallback surfaces, but validate them via raycast first
+                sampledSurfaces = GenerateFallbackSurfaces();
+            }
+            
             var layoutPlan = ARPlatformerGameplayLayoutPlanner.CreatePlan(
                 sampledSurfaces,
                 _playerCheckpointPosition,
@@ -308,6 +335,8 @@ namespace ARPlatformer
 
             if (!layoutPlan.HasGoal)
             {
+                UnityEngine.Debug.LogWarning("AR Platformer: Layout plan failed. This indicates: (1) sampled surfaces < 2 even after fallback, (2) raycasting layer mask misconfigured, or (3) all surfaces too close together. " +
+                    "Check that spatial mesh colliders are enabled and player/environment layer collision is configured in Physics settings.");
                 CreateOrUpdateCheckpointMarker();
                 return;
             }
@@ -349,13 +378,56 @@ namespace ARPlatformer
                 _playerCheckpointForward);
         }
 
+        private List<Vector3> GenerateFallbackSurfaces()
+        {
+            // Try to find valid fallback positions by raycasting in forward direction
+            // This is better than blind world-space positions
+            var fallbackSurfaces = new List<Vector3>();
+            var rayOrigin = _playerCheckpointPosition + Vector3.up * _config.RespawnRayHeight;
+            var distances = new[] { 0.5f, 1.5f, 3.0f };  // Try these distances forward
+            
+            foreach (var distance in distances)
+            {
+                var probePos = rayOrigin + _playerCheckpointForward * distance;
+                
+                // Try to raycast down to find a surface
+                if (Physics.Raycast(
+                    probePos,
+                    Vector3.down,
+                    out var hit,
+                    _config.RespawnRayDistance,
+                    _config.EnvironmentRaycastMask,
+                    QueryTriggerInteraction.Ignore))
+                {
+                    // Found a collision surface
+                    var samplePoint = hit.point + Vector3.up * _config.SurfaceHoverHeight;
+                    fallbackSurfaces.Add(samplePoint);
+                    UnityEngine.Debug.Log($"AR Platformer: Fallback surface found at {distance}m forward: {samplePoint}");
+                }
+                else
+                {
+                    // No collision found, place a visible forward fallback near checkpoint height.
+                    // This keeps generated items discoverable even when scan depth is incomplete.
+                    var estimatedPos = _playerCheckpointPosition +
+                        _playerCheckpointForward * distance +
+                        Vector3.up * _config.SurfaceHoverHeight;
+                    fallbackSurfaces.Add(estimatedPos);
+                    UnityEngine.Debug.LogWarning(
+                        $"AR Platformer: No surface collision found at {distance}m forward. " +
+                        $"Using checkpoint-height fallback position - this may float above or clip into geometry. " +
+                        $"Verify your room scan has good geometry coverage.");
+                }
+            }
+            
+            return fallbackSurfaces.Count > 0 ? fallbackSurfaces : null;
+        }
+
         private Vector3 ResolveSpawnPosition(Vector3 markerPosition)
         {
-            var rayOrigin = markerPosition + Vector3.up * _config.RespawnRayHeight;
-            if (Physics.Raycast(rayOrigin, Vector3.down, out var hit, _config.RespawnRayDistance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
-                return hit.point + Vector3.up * 0.05f;
+            if (TryRaycastSpawnSurface(markerPosition, out var hit))
+                return hit.point + Vector3.up * SpawnGroundOffset;
 
-            return markerPosition + Vector3.up * 0.2f;
+            return markerPosition + Vector3.up * 0.5f;
         }
 
         private Vector3 GetSpawnForward(Transform markerTransform, Camera gameplayCamera)
@@ -369,6 +441,37 @@ namespace ARPlatformer
                 referenceForward = Vector3.forward;
 
             return referenceForward.normalized;
+        }
+
+        private bool TryRaycastSpawnSurface(Vector3 markerPosition, out RaycastHit hit)
+        {
+            var rayOrigin = markerPosition + Vector3.up * _config.RespawnRayHeight;
+            return Physics.Raycast(
+                rayOrigin,
+                Vector3.down,
+                out hit,
+                _config.RespawnRayDistance,
+                _config.EnvironmentRaycastMask,
+                QueryTriggerInteraction.Ignore);
+        }
+
+        private void EnsurePlayerEnvironmentLayerCollision()
+        {
+            var playerLayer = Mathf.Clamp(_config.PlayerPhysicsLayer, 0, 31);
+            var environmentLayer = Mathf.Clamp(_config.SpatialMeshPhysicsLayer, 0, 31);
+            if (Physics.GetIgnoreLayerCollision(playerLayer, environmentLayer))
+                Physics.IgnoreLayerCollision(playerLayer, environmentLayer, false);
+        }
+
+        private static void ApplyLayerRecursively(GameObject root, int layer)
+        {
+            if (root == null)
+                return;
+
+            var clampedLayer = Mathf.Clamp(layer, 0, 31);
+            var transforms = root.GetComponentsInChildren<Transform>(true);
+            for (var i = 0; i < transforms.Length; i++)
+                transforms[i].gameObject.layer = clampedLayer;
         }
     }
 }

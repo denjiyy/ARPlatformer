@@ -51,6 +51,7 @@ namespace ARPlatformer
         private bool _appWasBackgrounded;
         private Coroutine _sessionRoutine;
         private Coroutine _resumeValidationRoutine;
+        private Coroutine _spawnPlayerRoutine;
         private float _nextScanCollisionSyncTime;
         private float _nextUiRefreshTime;
         private string _errorMessage;
@@ -63,6 +64,7 @@ namespace ARPlatformer
         {
             name = "AR Platformer Runtime";
             ApplyPerformanceDefaults();
+            EnsureCriticalLayerCollisionEnabled();
             EnsureEventSystem();
             _contentFactory.CacheSceneTemplates(transform);
             _gameplaySession = new ARPlatformerGameplaySession(_contentFactory, Config, defaultPlayerPrefab, HandlePlayerRespawnRequested);
@@ -106,6 +108,9 @@ namespace ARPlatformer
         {
             if (_resumeValidationRoutine != null)
                 StopCoroutine(_resumeValidationRoutine);
+
+            if (_spawnPlayerRoutine != null)
+                StopCoroutine(_spawnPlayerRoutine);
 
             CleanupRuntimeObjects();
 
@@ -242,6 +247,12 @@ namespace ARPlatformer
 
         private void CleanupRuntimeObjects()
         {
+            if (_spawnPlayerRoutine != null)
+            {
+                StopCoroutine(_spawnPlayerRoutine);
+                _spawnPlayerRoutine = null;
+            }
+
             if (_imageTarget != null)
             {
                 _imageTarget.OnTargetStatusChanged -= HandleImageTargetStatusChanged;
@@ -354,13 +365,17 @@ namespace ARPlatformer
 
                 if (!_gameplaySession.PlayerSpawned)
                 {
-                    _gameplaySession.SpawnPlayer(observerBehaviour.transform, gameplayCamera);
-                    _state = SessionState.Playing;
+                    BeginSpawnWhenEnvironmentIsReady(observerBehaviour.transform);
                 }
                 else
                 {
                     _gameplaySession.UpdateCheckpointFromMarker(observerBehaviour.transform, gameplayCamera);
                 }
+            }
+            else if (!_markerTracked && _spawnPlayerRoutine != null)
+            {
+                StopCoroutine(_spawnPlayerRoutine);
+                _spawnPlayerRoutine = null;
             }
 
             RefreshUi();
@@ -390,10 +405,10 @@ namespace ARPlatformer
                 return;
 
             _nextScanCollisionSyncTime = Time.unscaledTime + Config.ScanCollisionSyncInterval;
-            EnsureScanMeshCollision();
+            EnsureScanMeshCollision(forceRebuild: true);
         }
 
-        private void EnsureScanMeshCollision()
+        private void EnsureScanMeshCollision(bool forceRebuild = false)
         {
             if (_scanMeshRenderer == null || _scanMeshRenderer.RuntimeMeshRoot == null)
                 return;
@@ -409,11 +424,187 @@ namespace ARPlatformer
                 if (meshCollider == null)
                     meshCollider = meshFilter.gameObject.AddComponent<MeshCollider>();
 
+                if (forceRebuild && meshCollider.sharedMesh == sharedMesh)
+                    meshCollider.sharedMesh = null;
+
                 if (meshCollider.sharedMesh != sharedMesh)
                     meshCollider.sharedMesh = sharedMesh;
 
                 meshCollider.convex = false;
+                meshCollider.isTrigger = false;
+                meshCollider.enabled = true;
+                meshCollider.gameObject.layer = Mathf.Clamp(Config.SpatialMeshPhysicsLayer, 0, 31);
             }
+        }
+
+        private void BeginSpawnWhenEnvironmentIsReady(Transform markerTransform)
+        {
+            if (_spawnPlayerRoutine != null || markerTransform == null || _gameplaySession == null)
+                return;
+
+            _spawnPlayerRoutine = StartCoroutine(SpawnPlayerWhenEnvironmentIsReady(markerTransform));
+        }
+
+        private IEnumerator SpawnPlayerWhenEnvironmentIsReady(Transform markerTransform)
+        {
+            var readinessConfirmed = false;
+            if (Config.MarkerSpawnDelaySeconds > 0f)
+                yield return new WaitForSeconds(Config.MarkerSpawnDelaySeconds);
+
+            var timeoutAt = Time.unscaledTime + Config.MarkerSpawnReadinessTimeoutSeconds;
+            var stableChecks = 0;
+            while (true)
+            {
+                if (markerTransform == null ||
+                    !_markerTracked ||
+                    _gameplaySession == null ||
+                    _gameplaySession.PlayerSpawned)
+                {
+                    _spawnPlayerRoutine = null;
+                    yield break;
+                }
+
+                EnsureScanMeshCollision(forceRebuild: true);
+
+                var hasEnvironmentCollider = HasAnyRuntimeMeshCollider();
+                var hasSpawnSurface = _gameplaySession.HasSpawnSurface(markerTransform);
+                if (hasEnvironmentCollider && hasSpawnSurface)
+                {
+                    stableChecks++;
+                    if (stableChecks >= Config.MarkerSpawnStableChecks)
+                    {
+                        readinessConfirmed = true;
+                        break;
+                    }
+                }
+                else
+                {
+                    stableChecks = 0;
+                }
+
+                if (Time.unscaledTime >= timeoutAt)
+                {
+                    Debug.LogWarning("AR Platformer spawn readiness timed out. Spawning with best available floor estimate.");
+                    break;
+                }
+
+                yield return null;
+            }
+
+            if (_gameplaySession != null && !_gameplaySession.PlayerSpawned && _markerTracked && markerTransform != null)
+            {
+                // Force final mesh collider sync before spawning
+                EnsureScanMeshCollision(forceRebuild: true);
+                
+                // Poll for mesh baking completion (may take multiple frames for complex meshes)
+                var meshBakingTimeout = Time.unscaledTime + 2f;  // 2-second timeout for baking
+                while (Time.unscaledTime < meshBakingTimeout)
+                {
+                    // Check if any colliders have vertices (indicates baking started)
+                    var colliders = _scanMeshRenderer?.RuntimeMeshRoot?.GetComponentsInChildren<MeshCollider>(true);
+                    if (colliders != null && colliders.Length > 0)
+                    {
+                        // Check if colliders have actual geometry (vertex count > 0 means baked)
+                        bool anyColliderReady = false;
+                        foreach (var collider in colliders)
+                        {
+                            if (collider != null && collider.enabled && collider.sharedMesh != null && 
+                                collider.sharedMesh.vertexCount > 10)  // Require some minimum geometry
+                            {
+                                anyColliderReady = true;
+                                break;
+                            }
+                        }
+                        if (anyColliderReady)
+                            break;  // Colliders are ready, proceed to spawn
+                    }
+                    yield return null;
+                }
+                
+                // Verify layer collision is configured (critical diagnostic)
+                VerifyLayerCollisionConfiguration();
+
+                var finalEnvironmentReady = HasAnyRuntimeMeshCollider() &&
+                    _gameplaySession.HasSpawnSurface(markerTransform);
+                if (!finalEnvironmentReady && !readinessConfirmed)
+                {
+                    Debug.LogWarning(
+                        "AR Platformer: Spawn aborted because environment colliders or floor surface are still not ready. " +
+                        "Keep marker tracked; retrying spawn.");
+                    _spawnPlayerRoutine = null;
+
+                    if (_markerTracked && _gameplaySession != null && !_gameplaySession.PlayerSpawned)
+                        BeginSpawnWhenEnvironmentIsReady(markerTransform);
+
+                    yield break;
+                }
+                
+                _gameplaySession.SpawnPlayer(markerTransform, GetGameplayCamera());
+                _state = SessionState.Playing;
+            }
+
+            _spawnPlayerRoutine = null;
+            RefreshUi();
+        }
+
+        private void VerifyLayerCollisionConfiguration()
+        {
+            var playerLayer = Mathf.Clamp(Config.PlayerPhysicsLayer, 0, 31);
+            var environmentLayer = Mathf.Clamp(Config.SpatialMeshPhysicsLayer, 0, 31);
+            
+            // Check if layers are set to ignore each other (which would break collision)
+            if (Physics.GetIgnoreLayerCollision(playerLayer, environmentLayer))
+            {
+                UnityEngine.Debug.LogError(
+                    $"AR Platformer: CRITICAL - Physics layer collision is misconfigured! " +
+                    $"Player layer {playerLayer} is set to IGNORE environment layer {environmentLayer}. " +
+                    $"This will cause the character to fall through the mesh. " +
+                    $"Fix: Go to Edit > Project Settings > Physics, find layers {playerLayer} and {environmentLayer} in the collision matrix, " +
+                    $"and ensure they ARE checked to collide with each other.");
+            }
+            else
+            {
+                UnityEngine.Debug.Log(
+                    $"AR Platformer: Layer collision verified - Player layer {playerLayer} " +
+                    $"will collide with environment layer {environmentLayer}.");
+            }
+        }
+
+        private void EnsureCriticalLayerCollisionEnabled()
+        {
+            // Physics.IgnoreLayerCollision mutates global physics state for the whole app session.
+            // We intentionally enforce this pair here because ARPlatformer relies on that collision
+            // for floor contact and mesh raycasts; revisit this if the app adds scenes that need
+            // these layers to remain non-colliding.
+            var playerLayer = Mathf.Clamp(Config.PlayerPhysicsLayer, 0, 31);
+            var environmentLayer = Mathf.Clamp(Config.SpatialMeshPhysicsLayer, 0, 31);
+
+            if (Physics.GetIgnoreLayerCollision(playerLayer, environmentLayer))
+            {
+                Physics.IgnoreLayerCollision(playerLayer, environmentLayer, false);
+                UnityEngine.Debug.LogWarning(
+                    $"AR Platformer: Physics matrix had Player layer {playerLayer} and environment layer {environmentLayer} disabled. " +
+                    "Re-enabled collision at runtime to prevent fall-through and failed surface sampling.");
+            }
+        }
+
+        private bool HasAnyRuntimeMeshCollider()
+        {
+            if (_scanMeshRenderer == null || _scanMeshRenderer.RuntimeMeshRoot == null)
+                return false;
+
+            var colliders = _scanMeshRenderer.RuntimeMeshRoot.GetComponentsInChildren<MeshCollider>(true);
+            for (var i = 0; i < colliders.Length; i++)
+            {
+                var collider = colliders[i];
+                if (collider == null || !collider.enabled || collider.sharedMesh == null)
+                    continue;
+
+                if (collider.sharedMesh.vertexCount >= 3)
+                    return true;
+            }
+
+            return false;
         }
 
         private Camera GetGameplayCamera()

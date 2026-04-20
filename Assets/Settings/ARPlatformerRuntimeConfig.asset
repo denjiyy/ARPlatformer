@@ -21,6 +21,14 @@ MonoBehaviour:
   respawnRayHeight: 1.6
   respawnRayDistance: 5
   surfaceHoverHeight: 0.14
+  environmentRaycastMask:
+    serializedVersion: 2
+    m_Bits: -1
+  playerPhysicsLayer: 0
+  spatialMeshPhysicsLayer: 0
+  markerSpawnDelaySeconds: 0.12
+  markerSpawnStableChecks: 2
+  markerSpawnReadinessTimeoutSeconds: 2.5
   surfaceSampleSpacing: 0.45
   minSurfaceSpacing: 0.4
   minGoalDistance: 1.2

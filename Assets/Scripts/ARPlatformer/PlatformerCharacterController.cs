@@ -11,7 +11,7 @@ namespace ARPlatformer
         [SerializeField] private float gravity = -14f;
         [SerializeField] private float fallGravityMultiplier = 1.65f;
         [SerializeField] private float terminalVelocity = -20f;
-        [SerializeField] private float groundedVelocity = -2f;
+        [SerializeField] private float groundedVelocity = -0.6f;
         [SerializeField] private float groundAcceleration = 12f;
         [SerializeField] private float groundDeceleration = 16f;
         [SerializeField] private float airAcceleration = 5.5f;
@@ -19,7 +19,7 @@ namespace ARPlatformer
         [SerializeField] private float turnSpeed = 14f;
         [SerializeField] private float coyoteTime = 0.12f;
         [SerializeField] private float jumpBufferTime = 0.14f;
-        [SerializeField] private float fallRespawnDistance = 1.4f;
+        [SerializeField] private float fallRespawnDistance = 0.5f;
 
         private CharacterController _characterController;
         private Transform _cameraTransform;
@@ -31,8 +31,13 @@ namespace ARPlatformer
         private Vector3 _checkpointPosition;
         private Vector3 _checkpointForward = Vector3.forward;
         private float _respawnFloorY;
-        private bool _respawnRequested;
+        private float _lastRespawnTime;
         private bool _movementEnabled = true;
+        private bool _respawnRequested;
+        private bool _isGrounded;
+        private float _fallStartHeight = float.PositiveInfinity;
+        private float _fallStartTime = float.NegativeInfinity;
+        private float _spawnTime = float.NegativeInfinity;
 
         public event Action RespawnRequested;
         public event Action Jumped;
@@ -84,6 +89,8 @@ namespace ARPlatformer
         public void RespawnToCheckpoint()
         {
             _movementEnabled = true;
+            _lastRespawnTime = Time.time;
+            _spawnTime = Time.time;
             WarpTo(_checkpointPosition, _checkpointForward);
         }
 
@@ -91,9 +98,11 @@ namespace ARPlatformer
         {
             _characterController = GetComponent<CharacterController>();
             SetCheckpoint(transform.position, transform.forward);
+            // Initialize spawn time to now so initial spawn has grace period protection
+            _spawnTime = Time.time;
         }
 
-        private void Update()
+        private void FixedUpdate()
         {
             if (_characterController == null)
                 return;
@@ -104,12 +113,22 @@ namespace ARPlatformer
             if (_cameraTransform == null && Camera.main != null)
                 _cameraTransform = Camera.main.transform;
 
-            var deltaTime = Time.deltaTime;
+            var deltaTime = Time.fixedDeltaTime;
             var moveFrame = GetCameraRelativeMove();
-            var isGrounded = _characterController.isGrounded;
+            var isGrounded = IsActuallyGrounded();
 
+            _isGrounded = isGrounded;
             if (isGrounded)
+            {
                 _lastGroundedTime = Time.time;
+                _fallStartHeight = float.PositiveInfinity;
+                _fallStartTime = float.NegativeInfinity;
+            }
+            else if (_fallStartTime < 0f)
+            {
+                _fallStartTime = Time.time;
+                _fallStartHeight = transform.position.y;
+            }
 
             UpdatePlanarVelocity(moveFrame, isGrounded, deltaTime);
             TryConsumeJump(isGrounded);
@@ -209,12 +228,35 @@ namespace ARPlatformer
 
         private void CheckRespawnBounds()
         {
-            if (_respawnRequested || transform.position.y > _respawnFloorY)
+            if (_respawnRequested || Time.time - _lastRespawnTime < 1f || _isGrounded)
+                return;
+
+            if (Time.time - _spawnTime < 0.5f)
+                return;
+
+            if (_fallStartTime < 0f)
+                return;
+
+            var fallDistance = _fallStartHeight - transform.position.y;
+            if (fallDistance <= fallRespawnDistance)
+                return;
+
+            if (transform.position.y > _respawnFloorY)
+                return;
+
+            if (Time.time - _fallStartTime < 0.35f)
                 return;
 
             _respawnRequested = true;
             RespawnRequested?.Invoke();
             _respawnRequested = false;
+        }
+
+        private bool IsActuallyGrounded()
+        {
+            if (_characterController == null)
+                return false;
+            return _characterController.isGrounded;
         }
 
         private void WarpTo(Vector3 worldPosition, Vector3 forward)
